@@ -55,7 +55,7 @@ static struct builtin builtins[] =
     BUILTIN("cd", BINF_SKIPINVALID | BINF_SKIPDASH | BINF_DASHDASHVALID, bin_cd, 0, 2, BIN_CD, "qsPL", NULL),
     BUILTIN("chdir", BINF_SKIPINVALID | BINF_SKIPDASH | BINF_DASHDASHVALID, bin_cd, 0, 2, BIN_CD, "qsPL", NULL),
     BUILTIN("continue", BINF_PSPECIAL, bin_break, 0, 1, BIN_CONTINUE, NULL, NULL),
-    BUILTIN("declare", BINF_PLUSOPTS | BINF_MAGICEQUALS | BINF_PSPECIAL | BINF_ASSIGN, (HandlerFunc)bin_typeset, 0, -1, 0, "AE:%F:%HL:%R:%TUZ:%afghi:%klmnp:%rtuxz", NULL),
+    BUILTIN("declare", BINF_PLUSOPTS | BINF_MAGICEQUALS | BINF_PSPECIAL | BINF_ASSIGN, (HandlerFunc)bin_typeset, 0, -1, 0, "AE:%F:%HL:%R:%TUZ:%afghi:%klmnp:%rstuxz", NULL),
     BUILTIN("dirs", 0, bin_dirs, 0, -1, 0, "clpv", NULL),
     BUILTIN("disable", 0, bin_enable, 0, -1, BIN_DISABLE, "afmprs", NULL),
     BUILTIN("disown", 0, bin_fg, 0, -1, BIN_DISOWN, "a", NULL),
@@ -88,7 +88,7 @@ static struct builtin builtins[] =
     BUILTIN("jobs", 0, bin_fg, 0, -1, BIN_JOBS, "dlpZrs", NULL),
     BUILTIN("kill", BINF_HANDLES_OPTS, bin_kill, 0, -1, 0, NULL, NULL),
     BUILTIN("let", 0, bin_let, 1, -1, 0, NULL, NULL),
-    BUILTIN("local", BINF_PLUSOPTS | BINF_MAGICEQUALS | BINF_PSPECIAL | BINF_ASSIGN, (HandlerFunc)bin_typeset, 0, -1, 0, "AE:%F:%HL:%R:%TUZ:%ahi:%lnp:%rtux", NULL),
+    BUILTIN("local", BINF_PLUSOPTS | BINF_MAGICEQUALS | BINF_PSPECIAL | BINF_ASSIGN, (HandlerFunc)bin_typeset, 0, -1, 0, "AE:%F:%HL:%R:%TUZ:%ahi:%lnp:%rstux", NULL),
     BUILTIN("logout", 0, bin_break, 0, 1, BIN_LOGOUT, NULL, NULL),
 
 #if defined(ZSH_MEM) & defined(ZSH_MEM_DEBUG)
@@ -121,7 +121,7 @@ static struct builtin builtins[] =
     BUILTIN("trap", BINF_PSPECIAL | BINF_HANDLES_OPTS, bin_trap, 0, -1, 0, NULL, NULL),
     BUILTIN("true", 0, bin_true, 0, -1, 0, NULL, NULL),
     BUILTIN("type", 0, bin_whence, 0, -1, 0, "ampfsSw", "v"),
-    BUILTIN("typeset", BINF_PLUSOPTS | BINF_MAGICEQUALS | BINF_PSPECIAL | BINF_ASSIGN, (HandlerFunc)bin_typeset, 0, -1, 0, "AE:%F:%HL:%R:%TUZ:%afghi:%klp:%rtuxmnz", NULL),
+    BUILTIN("typeset", BINF_PLUSOPTS | BINF_MAGICEQUALS | BINF_PSPECIAL | BINF_ASSIGN, (HandlerFunc)bin_typeset, 0, -1, 0, "AE:%F:%HL:%R:%TUZ:%afghi:%klp:%rtuxmnsz", NULL),
     BUILTIN("umask", 0, bin_umask, 0, 1, 0, "S", NULL),
     BUILTIN("unalias", 0, bin_unhash, 0, -1, BIN_UNALIAS, "ams", NULL),
     BUILTIN("unfunction", 0, bin_unhash, 1, -1, BIN_UNFUNCTION, "m", "f"),
@@ -2694,14 +2694,23 @@ bin_typeset(char *name, char **argv, LinkList assigns, Options ops, int func)
 	else
 	    continue;
 	if (OPT_MINUS(ops,'n')) {
-	    if (bit & ~(PM_READONLY|PM_UPPER|PM_HIDEVAL)) {
+	    if (bit & ~(PM_READONLY|PM_UPPER|PM_HIDEVAL|PM_SYMREF) || OPT_MINUS(ops,'L')) {
 		zwarnnam(name, "-%c not allowed with -n", optval);
 		/* return 1; */
 	    }
 	}
     }
-    if (OPT_MINUS(ops,'n')) {
+    if (OPT_MINUS(ops,'s')) {
 	if ((on|off) & ~(PM_READONLY|PM_UPPER|PM_HIDEVAL)) {
+	    /* zwarnnam(name, "no other attributes allowed with -s"); */
+	    return 1;
+	}
+	on |= PM_NAMEREF | PM_SYMREF;
+    } else if (OPT_PLUS(ops,'s'))
+	off |= PM_NAMEREF | PM_SYMREF;
+
+    if (OPT_MINUS(ops,'n')) {
+	if ((on|off) & ~(PM_READONLY|PM_UPPER|PM_HIDEVAL|PM_NAMEREF|PM_SYMREF) || OPT_MINUS(ops,'L')) {
 	    /* zwarnnam(name, "no other attributes allowed with -n"); */
 	    return 1;
 	}
@@ -2724,7 +2733,7 @@ bin_typeset(char *name, char **argv, LinkList assigns, Options ops, int func)
      * Allowing -Z with -L is a feature: left justify, suppressing
      * leading zeroes.
      */
-    if (on & (PM_LEFT|PM_RIGHT_Z))
+    if (on & (PM_LEFT|PM_RIGHT_Z) && !OPT_MINUS(ops,'s'))
 	off |= PM_RIGHT_B;
     if (on & PM_RIGHT_B)
 	off |= PM_LEFT | PM_RIGHT_Z;

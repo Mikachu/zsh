@@ -62,8 +62,12 @@ paramtypestr(Param pm, int append)
 	val = dupstring(val);
 	if (pm->level)
 	    val = dyncat(val, "-local");
-	if (f & PM_LEFT)
-	    val = dyncat(val, "-left");
+	if (f & PM_LEFT) {
+	    if (f & PM_NAMEREF)
+		val = dyncat(val, "-symref");
+	    else
+		val = dyncat(val, "-left");
+	}
 	if (f & PM_RIGHT_B)
 	    val = dyncat(val, "-right_blanks");
 	if (f & PM_RIGHT_Z)

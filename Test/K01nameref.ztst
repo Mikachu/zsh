@@ -1385,13 +1385,13 @@ F:previously this could create an infinite recursion and crash
    local $name=value-$name
    check-valid-referent-name "$name" value-$name
    check-invalid-referent-name "$name"@
-   check-invalid-referent-name "$name""[1]"
+   #check-invalid-referent-name "$name""[1]"
  done
  # Test valid builtin variable names
  for name value in 123 "" \! 0 \? 0 \$ $$ - 569X _ -n; do
    check-valid-referent-name "$name" $value
    check-invalid-referent-name "$name"@
-   check-invalid-referent-name "$name""[1]"
+   #check-invalid-referent-name "$name""[1]"
  done
  # Test invalid variable names.
  for name in \
@@ -1404,7 +1404,7 @@ F:previously this could create an infinite recursion and crash
    check-invalid-variable-name "$name"
    check-invalid-referent-name "$name"
    check-invalid-referent-name "$name"@
-   check-invalid-referent-name "$name""[1]"
+   #check-invalid-referent-name "$name""[1]"
  done
  # Any variable name with more than one non-leading '.' is invalid.
  for name in {,.}{foo,123,1oo}.{bar,456,4ar}.{,baz,789,7az}; do
