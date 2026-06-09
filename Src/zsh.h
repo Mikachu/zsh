@@ -758,6 +758,7 @@ enum {
     VALFLAG_INV =	0x0001,	/* We are performing inverse subscripting */
     VALFLAG_EMPTY =	0x0002,	/* Subscripted range is empty */
     VALFLAG_SUBST =	0x0004,	/* Substitution, so apply padding, case flags */
+    VALFLAG_REFSLICE =	0x0008,	/* Value is a reference to a slice */
 };
 
 #define MAX_ARRLEN    262144
@@ -1885,6 +1886,7 @@ struct tieddata {
   (X & (PM_SCALAR|PM_INTEGER|PM_EFLOAT|PM_FFLOAT|PM_ARRAY|PM_HASHED|PM_NAMEREF))
 
 #define PM_LEFT		(1<<5)	/* left justify, remove leading blanks      */
+#define PM_SYMREF	(1<<5)	/* make nameref act as if it had subscript  */
 #define PM_RIGHT_B	(1<<6)	/* right justify, fill with leading blanks  */
 #define PM_RIGHT_Z	(1<<7)	/* right justify, fill with leading zeros   */
 #define PM_LOWER	(1<<8)	/* all lower case                           */

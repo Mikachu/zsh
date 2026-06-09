@@ -2247,6 +2247,7 @@ fetchvalue(Value v, char **pptr, int bracks, int scanflags)
     } else {
 	Param pm;
 	int isvarat;
+	int isrefslice = 0;
 
         isvarat = (t[0] == '@' && !t[1]);
 	if (scanflags & SCANPM_NONAMEREF)
@@ -2264,6 +2265,47 @@ fetchvalue(Value v, char **pptr, int bracks, int scanflags)
 	if (!pm || ((pm->node.flags & PM_UNSET) &&
 		    !(pm->node.flags & PM_DECLARED)))
 	    return NULL;
+	/* we only enter this block for symrefs, because getnode will have followed
+	   any normal nameref chains */
+	if ((pm->node.flags & PM_NAMEREF) && !(scanflags & SCANPM_NONAMEREF)) {
+	    char *refname = GETREFNAME(pm);
+	    if (refname && *refname) {
+		/* only happens for namerefs pointing to array elements */
+		char *ref = dupstring(refname);
+		char *ss = pm->width ? ref + pm->width : NULL;
+		if (ss) {
+		    sav = *ss;
+		    *ss = 0;
+		}
+		Param p1 = (Param)gethashnode2(realparamtab, ref);
+		if (p1)
+		    pm = loadparamnode(realparamtab, p1, ref);
+		if (!(p1 && pm) ||
+		    ((pm->node.flags & PM_UNSET) &&
+		     !(pm->node.flags & PM_DECLARED)))
+		    return NULL;
+		if ((pm->node.flags & PM_NAMEREF) && !(scanflags & SCANPM_NONAMEREF)) {
+		    if (!pm->width) {
+			pm = resolve_nameref_rec(pm, pm, 0);
+			if (!pm || ((pm->node.flags & PM_UNSET) &&
+				    !(pm->node.flags & PM_DECLARED)))
+			    return NULL;
+		    }
+		    if ((pm->node.flags & PM_NAMEREF) && pm->width) {
+			zerr("%s: subscripted nameref can't point to another subscripted nameref",
+			     pm->node.nam);
+			return NULL;
+		    }
+		}
+		if (ss) {
+		    scanflags |= SCANPM_NOEXEC;
+		    *ss = sav;
+		    s = dyncat(ss, *pptr);
+		    isrefslice = 1;
+		} else
+		    s = *pptr;
+	    }
+	}
 	if (!v)
 	    v = (Value) zhalloc(sizeof *v);
 	memset(v, 0, sizeof(*v));
@@ -2277,16 +2319,18 @@ fetchvalue(Value v, char **pptr, int bracks, int scanflags)
 		v->scanflags = SCANPM_ARRONLY;
 	}
 	v->pm = pm;
+	if (isrefslice)
+	    v->valflags = VALFLAG_REFSLICE;
 	v->end = -1;
-	if (bracks > 0 && (*s == '[' || *s == Inbrack)) {
-	    if (getindex(&s, v, scanflags)) {
+	if ((bracks > 0 || isrefslice) && (*s == '[' || *s == Inbrack)) {
+	    if (getindex(&s, v, scanflags & ~SCANPM_NOEXEC)) {
 		*pptr = s;
 		return v;
 	    }
 	} else if (!(scanflags & SCANPM_ASSIGNING) && v->scanflags &&
 		   itype_end(t, INAMESPC, 1) != t && isset(KSHARRAYS))
 	    v->end = 1, v->scanflags = 0;
-    }
+	    }
     if (!bracks && *s)
 	return NULL;
     *pptr = s;
@@ -2708,7 +2752,7 @@ assignstrvalue(Value v, char *val, int flags)
 	if (v->start == 0 && v->end == -1) {
 	    v->pm->gsu.s->setfn(v->pm, val);
 	    if ((v->pm->node.flags & (PM_LEFT | PM_RIGHT_B | PM_RIGHT_Z)) &&
-		!v->pm->width)
+		!v->pm->width && !(v->pm->node.flags & PM_NAMEREF))
 		v->pm->width = strlen(val);
 	} else {
 	    char *const old = v->pm->gsu.s->getfn(v->pm);
@@ -3177,6 +3221,7 @@ assignsparam(char *s, char *val, int flags)
 	    createparam(t, PM_SCALAR);
 	    created = 1;
 	} else if ((((v->pm->node.flags & PM_ARRAY) &&
+		     !(v->valflags & VALFLAG_REFSLICE) &&
 		     !(flags & ASSPM_AUGMENT)) ||
 		    (v->pm->node.flags & PM_HASHED)) &&
 		   !(v->pm->node.flags & (PM_SPECIAL|PM_TIED)) &&
@@ -3339,6 +3384,7 @@ assignaparam(char *s, char **val, int flags)
 	    unqueue_signals();
 	    return NULL;
 	} else if (!(PM_TYPE(v->pm->node.flags) & (PM_ARRAY|PM_HASHED)) &&
+		   !(v->valflags & VALFLAG_REFSLICE) &&
 		   !(v->pm->node.flags & (PM_SPECIAL|PM_TIED))) {
 	    int uniq = v->pm->node.flags & PM_UNIQUE;
 	    if ((flags & ASSPM_AUGMENT) && !(v->pm->node.flags & PM_UNSET)) {
@@ -3565,7 +3611,8 @@ sethparam(char *s, char **val)
     if (!(v = fetchvalue(&vbuf, &s, 1, SCANPM_ASSIGNING))) {
 	createparam(t, PM_HASHED);
 	checkcreate = 1;
-    } else if (!(PM_TYPE(v->pm->node.flags) & PM_HASHED)) {
+    } else if (!(PM_TYPE(v->pm->node.flags) & PM_HASHED) &&
+	       !(v->valflags & VALFLAG_REFSLICE)) {
 	if (!(v->pm->node.flags & PM_SPECIAL)) {
 	    if (resetparam(v->pm, PM_HASHED)) {
 		unqueue_signals();
@@ -3620,6 +3667,7 @@ assignnparam(char *s, mnumber val, int flags)
     ss = strchr(s, '[');
     v = getvalue(&vbuf, &s, 1);
     if (v && (v->pm->node.flags & (PM_ARRAY|PM_HASHED)) &&
+	!(v->valflags & VALFLAG_REFSLICE) &&
 	!(v->pm->node.flags & (PM_SPECIAL|PM_TIED)) &&
 	/*
 	 * not sure what KSHARRAYS has got to do with this...
@@ -6200,11 +6248,16 @@ printparamnode(HashNode hn, int printflags)
 	} else
 	    printf("typeset ");
     }
-
     /* Print the attributes of the parameter */
     if (printflags & (PRINT_TYPE|PRINT_TYPESET)) {
 	int doneminus = 0, i;
 	const struct paramtypes *pmptr;
+
+	if ((p->node.flags & (PM_NAMEREF|PM_SYMREF)) == (PM_NAMEREF|PM_LEFT)) {
+	    altname = 'L';
+	    printf("-s");
+	    doneminus = 1;
+	}
 
 	for (pmptr = pmtypes, i = 0; i < PMTYPES_SIZE; i++, pmptr++) {
 	    int doprint = 0;
@@ -6339,13 +6392,16 @@ resolve_nameref_rec(Param pm, const Param stop, int keep_lastref)
     Param ref = pm;
     char *refname;
     if (!pm || !(pm->node.flags & PM_NAMEREF) || (pm->node.flags & PM_UNSET)
-	|| !(refname = GETREFNAME(pm)) || !*refname)
+	|| pm->width || !(refname = GETREFNAME(pm)) || !*refname)
 	return pm;
+    int sym = ref->node.flags & PM_SYMREF;
     queue_signals();
     if ((pm = (Param)gethashnode2(realparamtab, refname))) {
-	if ((pm = loadparamnode(paramtab, upscope(pm, ref), refname)) &&
+	if ((pm = loadparamnode(paramtab, sym ? pm : upscope(pm, ref), refname)) &&
 	    pm != stop && !(pm->node.flags & PM_UNSET))
+	{
 	    pm = resolve_nameref_rec(pm, stop, keep_lastref);
+	}
     } else if (idigit(*refname)) {
 	int ppar = zstrtol(refname, NULL, 10);
 	if (ppar >= argnparams_size) {
@@ -6385,7 +6441,7 @@ setloopvar(char *name, char *value)
 	  zerr("invalid variable name: %s", value);
 	  return;
       }
-      pm->base = 0;
+      pm->base = pm->width = 0;
       SETREFNAME(pm, ztrdup(value));
       pm->node.flags &= ~PM_UNSET;
       setscope(pm);
@@ -6403,8 +6459,14 @@ setscope(Param pm)
 	char *refname = GETREFNAME(pm);
 	int q = queue_signal_level();
 
+	char *bracket = refname ? strchr(refname, '[') : NULL;
+	if (bracket) {
+	    pm->node.flags |= PM_SYMREF;
+	    pm->width = (int)(bracket - refname);
+	}
+
 	/* Compute pm->base */
-	if (!(pm->node.flags & PM_UPPER) && refname &&
+	if (!(pm->node.flags & PM_UPPER) && !(pm->node.flags & PM_SYMREF) && refname &&
 	    (basepm = (Param)gethashnode2(realparamtab, refname)) &&
 	    (basepm = (Param)loadparamnode(realparamtab, basepm, refname)) &&
 	    (basepm != pm || !basepm->old || (basepm = basepm->old))) {
@@ -6421,7 +6483,7 @@ setscope(Param pm)
 	}
 
 	/* Check for self references */
-	if (refname && *refname && basepm != pm) {
+	if (refname && *refname && basepm != pm && !pm->width) {
 	    dont_queue_signals();	/* Prevent unkillable loops */
 	    basepm = resolve_nameref_rec(pm, pm, 0);
 	    restore_queue_signals(q);
@@ -6468,6 +6530,8 @@ upscope(Param pm, const Param ref)
 static int
 valid_refname(char *val, int flags)
 {
+    char *t;
+
     if (flags & PM_UPPER) {
 	/* Upward reference to positionals is doomed to fail */
 	if (idigit(*val) || !strcmp(val, "argv") || !strcmp(val, "ARGC"))
@@ -6477,5 +6541,18 @@ valid_refname(char *val, int flags)
     if (*val == '!' || *val == '?' || *val == '$' || *val == '-')
     	return !*(++val);
 
-    return !*itype_end(val, INAMESPC, 0) && isident(val);
+    t = itype_end(val, INAMESPC, 0);
+    if (!*t)
+	return isident(val);
+    if (*t == '[') {
+	tokenize(t = dupstring(t+1));
+	while ((t = parse_subscript(t, 0, ']')) && *t++ == Outbrack) {
+	    if (*t == Inbrack)
+		++t;
+	    else
+		break;
+	}
+	return t && !*t;
+    }
+    return 0;
 }

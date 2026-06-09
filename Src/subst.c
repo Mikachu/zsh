@@ -2826,8 +2826,12 @@ paramsubst(LinkList l, LinkNode n, char **str, int qt, int pf_flags,
 		val = dupstring(val);
 		if (v->pm->level)
 		    val = dyncat(val, "-local");
-		if (f & PM_LEFT)
-		    val = dyncat(val, "-left");
+		if (f & PM_LEFT) {
+		    if (f & PM_NAMEREF)
+			val = dyncat(val, "-symref");
+		    else
+			val = dyncat(val, "-left");
+		}
 		if (f & PM_RIGHT_B)
 		    val = dyncat(val, "-right_blanks");
 		if (f & PM_RIGHT_Z)
@@ -2865,7 +2869,9 @@ paramsubst(LinkList l, LinkNode n, char **str, int qt, int pf_flags,
      * the local value system, or we need to get rid of brackets
      * even if there isn't a v.
      */
-    while (v || ((inbrace || (unset(KSHARRAYS) && vunset)) && isbrack(*s))) {
+    int was_refslice = 0;
+    while (v || ((inbrace || (unset(KSHARRAYS) && (vunset || was_refslice))) && isbrack(*s))) {
+	was_refslice = 0;
 	if (!v) {
 	    /*
 	     * Index applied to non-existent parameter; we may or may
@@ -2979,8 +2985,9 @@ paramsubst(LinkList l, LinkNode n, char **str, int qt, int pf_flags,
 	 * aval.  We could do with somehow encapsulating the bit
 	 * where we need v.
 	 */
+	was_refslice = !!(v->valflags & VALFLAG_REFSLICE);
 	v = NULL;
-	if (!inbrace)
+	if (!inbrace && !was_refslice)
 	    break;
     }
     /*
