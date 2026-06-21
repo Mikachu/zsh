@@ -352,7 +352,7 @@ _ffmpeg_filters() {
     v|vid*) type=V ;;
   esac
 
-  (( ${+opt[-T]} )) || _ffmpeg_prev_ss_type type
+  (( ${+opth[-T]} )) || _ffmpeg_prev_ss_type type
 
   case $type in
     A) tag=audio-$tag desc="audio $desc" ;;
@@ -607,7 +607,7 @@ _ffmpeg_stats_fmt_specs() {
     tb:"time base for time stamps of frame/packet"
     tbi:"timebase for ptsi"
     pts:"presentation time stamp of frame/packet"
-    ptsi:"prsentation time stamp of input frame (ni)"
+    ptsi:"presentation time stamp of input frame (ni)"
     t:"presentation time of frame/packet"
     ti:"presentation time of input frame (ni)"
     dts:"decoding time stamp of packet"
@@ -941,7 +941,7 @@ expert_opts+=(
     cmov \
     pentium2 pentium3 pentium4 k6 k62 athlon athlonxp k8 \
     armv5te armv6 armv6t2 vfp vfpv3 neon setend \
-    armv8 vfp neon \
+    armv8 \
     altivec
   '
   '-cpucount[specify CPU count]: :_ffmpeg_numbers "CPU count"'
@@ -969,7 +969,7 @@ expert_opts+=(
   '
   '-copyts[copy timestamps]'
   '-start_at_zero[shift input timestamps to start at 0 (with -copyts)]'
-  '-copytdb[specify how to set encoder time base when copying stream]:mode:((
+  '-copytb[specify how to set encoder time base when copying stream]:mode:((
     -1\:"decide automatically"
     0\:"use decoder time base"
     1\:"use demuxer time base"
@@ -1145,14 +1145,14 @@ expert_opts+=(
   '*-stats_enc_pre[write pre-encoding frame stats to specified file]:stats file:_files'
   '*-stats_enc_post[write post-encoding frame stats to specified file]:stats file:_files'
   '*-stats_mux_pre[write pre-muxing frame stats to specified file]:stats file:_files'
-  '*-stats_enc_pre_fmt[specify format for -stats_enc_pre]: :_ffmpeg_stats_fmt_specs:'
-  '*-stats_enc_post_fmt[specify format for -stats_enc_post]: :_ffmpeg_stats_fmt_specs:'
-  '*-stats_mux_pre_fmt[specify format for -stats_mux_pre]: :_ffmpeg_stats_fmt_specs:'
+  '*-stats_enc_pre_fmt[specify format for -stats_enc_pre]: :_ffmpeg_stats_fmt_specs'
+  '*-stats_enc_post_fmt[specify format for -stats_enc_post]: :_ffmpeg_stats_fmt_specs'
+  '*-stats_mux_pre_fmt[specify format for -stats_mux_pre]: :_ffmpeg_stats_fmt_specs'
   '*-time_base[specify time base for output stream]:time base (num\:den or float):'
   '*-enc_time_base[specify time base for encoder]:encoder time base (or num\:den or float):((
     0\:"assign default value according to media type"
     demux\:"use time base from demuxer"
-    filter\:"use time bae from filtergraph"
+    filter\:"use time base from filtergraph"
   ))'
   '*-bsf[specify bitstream filters]: :_ffmpeg_bsfs'
   '*-max_muxing_queue_size[specify max packets in muxing queue]: :\
@@ -1194,9 +1194,9 @@ expert_opts+=(
   '*-display_hflip[flip video horizontally]'
   '*-display_vflip[flip video vertically]'
   '*-rc_override[specify rate-control override]:rate control (beg,end,quant):'
-  '*-timecode[specify timecode]:timecode (hh:mm:ss[:;.]ff)'
+  '*-timecode[specify timecode]:timecode (hh\:mm\:ss[\:;.]ff):'
   '*-pass[specify pass number for two-pass video encoding]:pass:(1 2)'
-  '*-passlog[specify two-pass log-file prefix]:log-file prefix [ffmpeg2pass]:'
+  '*-passlogfile[specify two-pass log-file prefix]:log-file prefix [ffmpeg2pass]:'
   '*-intra_matrix[specify intra quantisation matrix]:intra quantisation matrix:'
   '*-inter_matrix[specify inter quantisation matrix]:inter quantisation matrix:'
   '*-chroma_intra_matrix[specify chroma intra quantisation matrix]:intra quantisation matrix:'
@@ -1207,8 +1207,8 @@ expert_opts+=(
   '*-force_key_frames[force key frames at specified timestamps]: :_ffmpeg_kf_force_conds'
   '*-hwaccel[specify hardware acceleration for decoding]: :_ffmpeg_hwaccels'
   '*-hwaccel_device[specify hardware-acceleration device (with -hwaccel)]: :_ffmpeg_hw_devices'
-  '*-hwaccel_output_format[specify hardware-acceleration output format (with -hwaccel)]: :_ffmpeg_pixfmts -H'
-  '*-autorate[automatically rotate video]'
+  '*-hwaccel_output_format[specify hardware-acceleration output format (with -hwaccel)]: :_ffmpeg_pix_fmts -H'
+  '*-autorotate[automatically rotate video]'
   '*-autoscale[automatically scale video]'
   '*-apply_cropping[automatically crop video using specified method]:crop method [all]:((
     none\:"don'\''t apply cropping"
@@ -1241,7 +1241,7 @@ expert_opts+=(
   '*-aframes[specify max audio frames to output (like -frames\:a)]: :\
     _ffmpeg_numbers "max audio frames"
   '
-  '*-apad[pad audio stream with specified parameters (like -af apad) (with -shortest)]:apad filter parameters ([key=]val\:[key=]val\:...)'
+  '*-apad[pad audio stream with specified parameters (like -af apad) (with -shortest)]:apad filter parameters ([key=]val\:[key=]val\:...):'
   '*-atag[force specified audio codec tag/fourcc (like -tag\:a)]:audio codec fourcc:'
   '*-sample_fmt[specify audio sample format]: :_ffmpeg_sample_fmts'
   '*'{-channel_layout,-ch_layout}'[specify audio channel layout]: :_ffmpeg_layouts'
@@ -1401,10 +1401,9 @@ gen_avo_opts+=(
   '!*-sub_charenc_mode[]:subtitle character encoding mode flag [0]:\
     _ffmpeg_flags - do_nothing auto pre_decoder ignore
   '
-  '!*-apply_cropping'
   '!*-skip_alpha'
   '!*-field_order[]:field order [0]:(progressive tt bb tb bt)'
-  '!*-dump_seprator[specify information dump field separator]:field separator:'
+  '!*-dump_separator[specify information dump field separator]:field separator:'
   '!*-codec_whitelist[]: :_sequence -s, _ffmpeg_codecs -D'
   '!*-max_pixels[]:int64:'
   '!*-max_samples[]:int64:'
@@ -1515,7 +1514,7 @@ done
 [[ $words[CURRENT] == -/* || $words[CURRENT-1] == -/?* ]] &&
 for (( x = 1; x <= $#opts; x++ )); do
   [[ $opts[x] == *\]:* ]] || continue
-  [[ $x == \([' *:-']##\)* ]] && continue # skip -help etc
+  [[ $opts[x] == \([' *:-']##\)* ]] && continue # skip -help etc
   y=${${${${opts[x]#\!}#\(*\)}#\*}%%(\\:|)(-|)\[*} # option name for desc
   # turn '-c:x:y' into '-/c:...:_files'
   [[ $opts[x] == \(* ]] && opts[x]=${opts[x]/\)-/\)-/} || opts[x]=${opts[x]/-/-/}
