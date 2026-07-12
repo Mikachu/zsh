@@ -4833,6 +4833,7 @@ clear_mbstate(void) {
 #ifdef MULTIBYTE_SUPPORT
     mb_charinit();	/* utils.c */
     clear_shiftstate();	/* pattern.c */
+    reset_combining_wctype(); /* not related to mbstate but convenient to call from here */
 #endif
 }
 

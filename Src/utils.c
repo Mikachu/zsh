@@ -113,6 +113,43 @@ set_widearray(char *mb_array, Widechar_array wca)
 	wmemcpy(wca->chars, tmpwcs, wca->len);
     }
 }
+
+/*
+ * Cache for the glibc "combining" wctype extension, used to distinguish
+ * invisible format characters (Unicode Cf, e.g. U+2060 WORD JOINER) from
+ * combining characters (Mn/Mc/Me, e.g. U+0308 COMBINING DIAERESIS).
+ * Is reset on locale change via reset_combining_wctype().
+ */
+static wctype_t combining_wctype;
+static int combining_wctype_init;
+
+/**/
+mod_export void
+reset_combining_wctype(void)
+{
+    combining_wctype_init = 0;
+}
+
+/*
+ * Returns 1 if wc is an invisible format character (Unicode Cf) that
+ * should be escaped, as opposed to a combining character (Mn/Mc/Me)
+ * which should be left as-is.  Relies on the glibc "combining" wctype
+ * extension; returns 0 on systems that don't support it or in the C
+ * locale (where wctype("combining") returns 0).
+ */
+static int
+is_invisible_format(wchar_t c)
+{
+    if (!WC_ISPRINT(c) || WCWIDTH(c) != 0)
+	return 0;
+    if (!combining_wctype_init) {
+	combining_wctype = wctype("combining");
+	combining_wctype_init = 1;
+    }
+    if (!combining_wctype)
+	return 0;  /* C locale or non-glibc: can't distinguish safely */
+    return !iswctype(c, combining_wctype);
+}
 #endif
 
 
@@ -637,6 +674,9 @@ wcs_nicechar_sel(wchar_t c, size_t *widthp, char **swidep, int quotable)
 	}
     }
 
+    if (ret == 0 && is_invisible_format(c))
+	ret = -1;
+
     if (ret != -1)
 	ret = wcrtomb(mbstr, c, &mb_shiftstate);
 
@@ -722,7 +762,7 @@ is_wcs_nicechar(wchar_t c)
 	    return (c >= 0x100 || is_nicechar((int)c));
 	}
     }
-    return 0;
+    return is_invisible_format(c);
 }
 
 /**/
@@ -6218,6 +6258,7 @@ quotestring(const char *s, int instring)
 	    if (
 #ifdef MULTIBYTE_SUPPORT
 		cc != WEOF &&
+		!is_invisible_format(cc) &&
 #endif
 		WC_ISPRINT(cc)) {
 		switch (cc) {
